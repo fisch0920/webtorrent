@@ -6,6 +6,7 @@ $(document).ready(function () {
     torrentId: 'JH2TF3UY4IIOMTJ7SCNAZIBZ3IFSX45H'
   })
 
+  // TODO
   io.on('torrent', function (data) {
     console.log(data)
   })
