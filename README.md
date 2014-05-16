@@ -1,4 +1,4 @@
-# ![WebTorrent](https://raw.github.com/feross/webtorrent/master/img/wordmark.png)
+# ![WebTorrent](https://raw.github.com/feross/webtorrent/master/server/public/img/wordmark.png)
 [![build](https://img.shields.io/travis/feross/webtorrent.svg)](https://travis-ci.org/feross/webtorrent)
 [![npm](https://img.shields.io/npm/v/webtorrent.svg)](https://npmjs.org/package/webtorrent)
 [![gittip](https://img.shields.io/gittip/feross.svg)](https://www.gittip.com/feross/)
@@ -150,4 +150,4 @@ WebTorrent is only possible due to the excellent work of the following contribut
 
 MIT. Copyright (c) [Feross Aboukhadijeh](http://feross.org).
 
-![Magic](https://raw.github.com/feross/webtorrent/master/img/logo.png)
+![Magic](https://raw.github.com/feross/webtorrent/master/server/public/img/logo.png)
