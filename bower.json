@@ -1,6 +1,19 @@
 {
   "name": "webtorrent-io",
+  "description": "Streaming torrent client",
   "version": "0.0.1",
+  "homepage": "http://webtorrent.io",
+  "authors": [
+    {
+      "name": "Feross Aboukhadijeh",
+      "email": "feross@feross.org",
+      "url": "http://feross.org/"
+    },
+    {
+      "name": "Travis Fischer",
+      "email": "fisch0920@gmail.com"
+    }
+  ],
   "ignore": [
     "**/.*",
     "node_modules",
@@ -9,5 +22,22 @@
   "dependencies": {
     "jquery": "~2.1.1",
     "socket.io-client": "~0.9.16"
+  },
+  "keywords": [
+    "torrent",
+    "bittorrent",
+    "bittorrent client",
+    "streaming",
+    "download",
+    "webrtc",
+    "webrtc data",
+    "webtorrent",
+    "mad science"
+  ],
+  "license": "MIT",
+  "main": "server/app.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/feross/webtorrent.git"
   }
 }
