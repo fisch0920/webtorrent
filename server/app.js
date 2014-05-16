@@ -35,15 +35,17 @@ app.configure('development', function () {
 })
 
 app.io.route('torrent', function(req) {
+  var started = Date.now()
+
   client.add(req.data.torrentId, req.data.opts, function (err, torrent) {
     if (err) {
-      app.io.emit('error', err)
+      app.io.broadcast('error', err)
       return
     }
-    app.io.emit('torrent', { torrent: torrent.infoHash })
+    app.io.broadcast('torrent', { torrent: torrent.infoHash })
 
     function updateMetadata () {
-      app.io.emit('torrent:metadata:update', {
+      app.io.broadcast('torrent:metadata:update', {
         torrent: torrent.infoHash,
         numPeers: torrent.swarm.numPeers
       })
@@ -54,7 +56,7 @@ app.io.route('torrent', function(req) {
       if (torrent !== t) return
       torrent.swarm.removeListener('wire', updateMetadata)
 
-      app.io.emit('torrent:metadata', {
+      app.io.broadcast('torrent:metadata', {
         torrent: torrent.infoHash,
         parsedTorrent: torrent.parsedTorrent
       })
@@ -92,7 +94,7 @@ app.io.route('torrent', function(req) {
         var estimatedSecondsRemaining = Math.max(0, torrent.length - swarm.downloaded) / (speed > 0 ? speed : -1)
         var estimate = moment.duration(estimatedSecondsRemaining, 'seconds').humanize()
 
-        app.io.emit('torrent:update', {
+        app.io.broadcast('torrent:update', {
           torrent: torrent.infoHash,
           filename: filename,
           runtime: runtime,
