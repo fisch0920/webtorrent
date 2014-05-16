@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 var chalk = require('chalk')
 var clivas = require('clivas')
 var concat = require('concat-stream')

@@ -7,7 +7,7 @@
     "server/public/components"
   ],
   "dependencies": {
-    "socket.io": "~0.9.15",
-    "jquery": "~2.1.1"
+    "jquery": "~2.1.1",
+    "socket.io-client": "~0.9.16"
   }
 }
