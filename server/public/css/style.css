@@ -6,8 +6,9 @@
 /* **************************************************************************
                                    GENERAL
    ************************************************************************** */
+#html,
 body {
-  color: #666;
+  background: #454545;
   padding: 0;
   margin: 0;
 }
@@ -17,49 +18,25 @@ a {
 a:active {
   color: #1B5F97;
 }
-form {
-  margin-bottom: .2em !important;
+.spinning-logo {
+  display: inline-block;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
 }
-#html,
-body {
-  width: 100%;
-  height: 100%;
-  min-height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-}
-.downloader-wrapper {
-  position: absolute;
-  top: 50%;
-  margin-top: -260px;
-  left: 0;
-  width: 100%;
-  z-index: -1;
-}
-.downloader-wrapper .downloader {
-  height: 500px;
-  margin-left: auto;
-  margin-right: auto;
-  padding: 10px;
-  position: relative;
-  width: 500px;
-  background: #454545;
-}
-.downloader-wrapper .downloader .axis path,
-.downloader-wrapper .downloader .axis line {
+.spinning-logo .axis path,
+.spinning-logo .axis line {
   fill: none;
   stroke: #fff;
   shape-rendering: crispEdges;
 }
-.downloader-wrapper .downloader .y.axis {
+.spinning-logo .y.axis {
   stroke-width: 1px;
 }
-.downloader-wrapper .downloader .y text {
+.spinning-logo .y text {
   fill: #fff;
 }
-.downloader-wrapper .downloader [class^="pie-"] {
+.spinning-logo [class^="pie-"] {
   fill-opacity: .85;
   -webkit-transition: fill 0.2s ease-in-out;
   -moz-transition: fill 0.2s ease-in-out;
@@ -73,67 +50,114 @@ body {
   user-select: none;
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
 }
-.downloader-wrapper .downloader .pie-selected {
+.spinning-logo .pie-selected {
   stroke: rgba(255, 255, 255, 0.6);
   stroke-width: 4;
 }
-.downloader-wrapper .downloader .pie-1 {
+.spinning-logo .pie-1 {
   fill: #5acf31;
 }
-.downloader-wrapper .downloader .pie-1-hover {
+.spinning-logo .pie-1-hover {
   fill: #85ff48;
 }
-.downloader-wrapper .downloader .pie-2 {
+.spinning-logo .pie-2 {
   fill: #fd898b;
 }
-.downloader-wrapper .downloader .pie-2-hover {
+.spinning-logo .pie-2-hover {
   fill: #ffcacd;
 }
-.downloader-wrapper .downloader .pie-3 {
+.spinning-logo .pie-3 {
   fill: #5095a8;
 }
-.downloader-wrapper .downloader .pie-3-hover {
+.spinning-logo .pie-3-hover {
   fill: #76dcf8;
 }
-.downloader-wrapper .downloader .pie-4 {
+.spinning-logo .pie-4 {
   fill: #57666f;
 }
-.downloader-wrapper .downloader .pie-4-hover {
+.spinning-logo .pie-4-hover {
   fill: #8097a4;
 }
-.downloader-wrapper .downloader .pie-5 {
+.spinning-logo .pie-5 {
   fill: #ff9449;
 }
-.downloader-wrapper .downloader .pie-5-hover {
+.spinning-logo .pie-5-hover {
   fill: #ffdb6c;
 }
-.downloader-wrapper .downloader .pie-6 {
+.spinning-logo .pie-6 {
   fill: #46bef3;
 }
-.downloader-wrapper .downloader .pie-6-hover {
+.spinning-logo .pie-6-hover {
   fill: #67ffff;
 }
-.downloader-wrapper .downloader .pie-7 {
+.spinning-logo .pie-7 {
   fill: #b68358;
 }
-.downloader-wrapper .downloader .pie-7-hover {
+.spinning-logo .pie-7-hover {
   fill: #ffc182;
 }
-.downloader-wrapper .downloader .pie-8 {
+.spinning-logo .pie-8 {
   fill: #008375;
 }
-.downloader-wrapper .downloader .pie-8-hover {
+.spinning-logo .pie-8-hover {
   fill: #00c1ad;
 }
-.downloader-wrapper .downloader .pie-9 {
+.spinning-logo .pie-9 {
   fill: #d786be;
 }
-.downloader-wrapper .downloader .pie-9-hover {
+.spinning-logo .pie-9-hover {
   fill: #ffc6ff;
 }
-.downloader-wrapper .downloader .pie-10 {
+.spinning-logo .pie-10 {
   fill: #e9e9eb;
 }
-.downloader-wrapper .downloader .pie-10-hover {
+.spinning-logo .pie-10-hover {
   fill: #ffffff;
+}
+#header {
+  display: block;
+  text-align: center;
+  margin: 1em auto;
+}
+#header .logo {
+  position: relative;
+  top: -24px;
+  margin-left: .2em;
+  display: inline-block;
+  font-family: 'Carrois Gothic SC', sans-serif;
+  font-size: 3.5em;
+}
+#header .logo .prefix {
+  color: rgba(13, 215, 247, 0.7);
+}
+#header .logo .suffix {
+  color: rgba(237, 237, 237, 0.95);
+}
+.table-torrents tfoot {
+  display: none;
+}
+.black {
+  color: #000 !important;
+  text-align: center !important;
+}
+.percent-done {
+  margin-left: .5em;
+}
+.float-right {
+  float: right;
+}
+.inline {
+  display: inline;
+}
+#content {
+  margin: 0 auto;
+}
+.title,
+.video-js {
+  text-align: center;
+  margin: 0 auto;
+}
+.title {
+  color: #fff;
+  margin-bottom: 1em;
 }

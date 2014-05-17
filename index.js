@@ -99,6 +99,7 @@ WebTorrent.prototype._onTorrent = function (torrent) {
   torrent.files[torrent.index].select()
   self.index = torrent.index
   self.torrent = torrent
+  self.mime = mime.lookup(torrent.files[torrent.index].name)
 }
 
 WebTorrent.prototype._startServer = function () {

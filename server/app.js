@@ -8,21 +8,18 @@ var moment     = require('moment')
 
 var app = express()
 var client = new WebTorrent({ quiet: true })
+client.server.listen(9000)
 app.http().io()
 
 app.configure(function () {
-  var viewsDir   = path.join(__dirname, 'views')
-  var layoutsDir = path.join(viewsDir, 'layouts')
-
   app.set('port', process.env.PORT || 3000)
-  app.set('views', viewsDir)
-  app.engine('.hbs', exphbs({
-    defaultLayout: 'main',
-    layoutsDir: layoutsDir,
-    extname: '.hbs',
+  app.set('views', __dirname)
+  app.engine('html', exphbs({
+    defaultLayout: false,
+    extname: '.html',
   }))
-  app.set('view engine', '.hbs')
-  app.use(express.favicon())
+  app.set('view engine', 'html')
+  app.use(express.favicon(path.join(__dirname, 'public/img/favicon.ico')))
   app.use(express.logger('dev'))
   app.use(express.bodyParser())
   app.use(express.methodOverride())
@@ -42,11 +39,11 @@ app.io.route('torrent', function(req) {
       app.io.broadcast('error', err)
       return
     }
-    app.io.broadcast('torrent', { torrent: torrent.infoHash })
+    app.io.broadcast('torrent', { infoHash: torrent.infoHash })
 
     function updateMetadata () {
       app.io.broadcast('torrent:metadata:update', {
-        torrent: torrent.infoHash,
+        infoHash: torrent.infoHash,
         numPeers: torrent.swarm.numPeers
       })
     }
@@ -56,12 +53,7 @@ app.io.route('torrent', function(req) {
       if (torrent !== t) return
       torrent.swarm.removeListener('wire', updateMetadata)
 
-      app.io.broadcast('torrent:metadata', {
-        torrent: torrent.infoHash,
-        parsedTorrent: torrent.parsedTorrent
-      })
-
-      var filename = torrent.name
+      var href = 'http://' + address() + ':' + client.server.address().port + '/'
       var swarm = torrent.swarm
       var wires = swarm.wires
       var hotswaps = 0
@@ -91,15 +83,20 @@ app.io.route('torrent', function(req) {
         var unchoked = swarm.wires.filter(active)
         var runtime = getRuntime()
         var speed = swarm.downloadSpeed()
+        var percentDone = swarm.downloaded / torrent.length
         var estimatedSecondsRemaining = Math.max(0, torrent.length - swarm.downloaded) / (speed > 0 ? speed : -1)
         var estimate = moment.duration(estimatedSecondsRemaining, 'seconds').humanize()
 
         app.io.broadcast('torrent:update', {
-          torrent: torrent.infoHash,
-          filename: filename,
+          infoHash: torrent.infoHash,
+          name: torrent.name,
           runtime: runtime,
           done: !!done,
-          downloadSpeed: bytes(speed),
+          streamable: true,
+          streamUrl: href,
+          mime: client.mime,
+          percentDone: 100 * percentDone,
+          downloadSpeed: bytes(speed) + '/s',
           downloadSpeedRaw: speed,
           numUnchoked: unchoked.length,
           numPeers: wires.length,
@@ -136,8 +133,13 @@ app.io.route('torrent', function(req) {
   })
 })
 
-app.get('/', function(req, res) {
-  res.render('index', { title: 'Webtorrent.io' })
+var routes = [ // initialize all client-side routes
+  '/',
+  '/torrent/:torrent/stream'
+]
+
+routes.forEach(function (route) {
+  app.get(route, function(req, res) { res.render('index') })
 })
 
 console.log('starting express server on port', app.get('port'))

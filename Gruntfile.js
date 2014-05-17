@@ -40,13 +40,13 @@ module.exports = function (grunt) {
         tasks: ['develop', 'delayed-livereload']
       },
       js: {
-        files: ['server/public/js/**/*.js']
+        files: ['server/public/**/*.js']
       },
       css: {
-        files: ['server/public/css/**/*.{less,css}']
+        files: ['server/public/**/*.{less,css}']
       },
       hbs: {
-        files: ['server/views/**/*.hbs']
+        files: ['server/**/*.html']
       }
     }
   })
