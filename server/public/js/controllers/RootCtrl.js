@@ -2,7 +2,7 @@
 angular.module('webtorrent').controller('RootCtrl', function (
   $rootScope, socket)
 {
-  socket.emit('torrent', { torrentId: 'JH2TF3UY4IIOMTJ7SCNAZIBZ3IFSX45H' })
+  //socket.emit('torrent', { torrentId: 'JH2TF3UY4IIOMTJ7SCNAZIBZ3IFSX45H' })
   $rootScope.safeApply = function (fn) {
     var phase = this.$root.$$phase
     if (phase == '$apply' || phase == '$digest') {
