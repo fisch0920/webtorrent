@@ -1,195 +1,302 @@
-// TODO: support blocklists
-
 module.exports = WebTorrent
 
-var Client = require('bittorrent-client')
-var concat = require('concat-stream')
-var extend = require('extend.js')
-var fs = require('fs')
-var FSStorage = require('./lib/fs-storage')
-var http = require('http')
+var createTorrent = require('create-torrent')
+var debug = require('debug')('webtorrent')
+var DHT = require('bittorrent-dht/client') // browser exclude
+var EventEmitter = require('events').EventEmitter
+var extend = require('xtend')
+var hat = require('hat')
 var inherits = require('inherits')
-var mime = require('mime')
-var once = require('once')
-var pump = require('pump')
-var rangeParser = require('range-parser')
-var url = require('url')
+var loadIPSet = require('load-ip-set') // browser exclude
+var parallel = require('run-parallel')
+var parseTorrent = require('parse-torrent')
+var speedometer = require('speedometer')
+var zeroFill = require('zero-fill')
+var path = require('path')
 
-inherits(WebTorrent, Client)
+var FSStorage = require('./lib/fs-storage') // browser exclude
+var Storage = require('./lib/storage')
+var Torrent = require('./lib/torrent')
 
+inherits(WebTorrent, EventEmitter)
+
+var VERSION = require('./package.json').version
+
+/**
+ * BitTorrent client version string (used in peer ID).
+ * Generated from package.json major and minor version. For example:
+ *   '0.16.1' -> '0016'
+ *   '1.2.5' -> '0102'
+ */
+var VERSION_STR = VERSION.match(/([0-9]+)/g).slice(0, 2).map(zeroFill(2)).join('')
+
+/**
+ * WebTorrent Client
+ * @param {Object} opts
+ */
 function WebTorrent (opts) {
   var self = this
-  opts = opts || {}
-  if (opts.blocklist) opts.blocklist = parseBlocklist(opts.blocklist)
-  Client.call(self, opts)
+  if (!(self instanceof WebTorrent)) return new WebTorrent(opts)
+  if (!opts) opts = {}
+  EventEmitter.call(self)
+  if (!debug.enabled) self.setMaxListeners(0)
 
-  if (opts.list) {
-    return
+  self.destroyed = false
+  self.torrentPort = opts.torrentPort || 0
+  self.tracker = opts.tracker !== undefined ? opts.tracker : true
+
+  self._rtcConfig = opts.rtcConfig
+  self._wrtc = opts.wrtc || global.WRTC // to support `webtorrent-hybrid` package
+
+  self.torrents = []
+
+  self.downloadSpeed = speedometer()
+  self.uploadSpeed = speedometer()
+
+  self.storage = typeof opts.storage === 'function'
+    ? opts.storage
+    : (opts.storage !== false && typeof FSStorage === 'function' /* browser exclude */)
+      ? FSStorage
+      : Storage
+
+  self.peerId = opts.peerId === undefined
+    ? new Buffer('-WW' + VERSION_STR + '-' + hat(48), 'utf8')
+    : typeof opts.peerId === 'string'
+      ? new Buffer(opts.peerId, 'hex')
+      : opts.peerId
+  self.peerIdHex = self.peerId.toString('hex')
+
+  self.nodeId = opts.nodeId === undefined
+    ? new Buffer(hat(160), 'hex')
+    : typeof opts.nodeId === 'string'
+      ? new Buffer(opts.nodeId, 'hex')
+      : opts.nodeId
+  self.nodeIdHex = self.nodeId.toString('hex')
+
+  if (opts.dht !== false && typeof DHT === 'function' /* browser exclude */) {
+    // use a single DHT instance for all torrents, so the routing table can be reused
+    self.dht = new DHT(extend({ nodeId: self.nodeId }, opts.dht))
+    self.dht.listen(opts.dhtPort)
   }
 
-  self._startServer()
+  debug('new webtorrent (peerId %s, nodeId %s)', self.peerIdHex, self.nodeIdHex)
 
-  self.on('torrent', function (torrent) {
-    self._onTorrent(torrent)
-  })
+  if (typeof loadIPSet === 'function') {
+    loadIPSet(opts.blocklist, {
+      headers: { 'user-agent': 'WebTorrent (http://webtorrent.io)' }
+    }, function (err, ipSet) {
+      if (err) return self.error('failed to load blocklist: ' + err.message)
+      self.blocked = ipSet
+      ready()
+    })
+  } else process.nextTick(ready)
 
-  // TODO: add event that signals that all files that are "interesting" to the user have
-  // completed and handle it by stopping fetching additional data from the network
+  function ready () {
+    if (self.destroyed) return
+    self.ready = true
+    self.emit('ready')
+  }
 }
 
-WebTorrent.prototype.add = function (torrentId, opts, cb) {
-  var self = this
-  if (!self.ready) {
-    return self.once('ready', self.add.bind(self, torrentId, opts, cb))
+/**
+ * Seed ratio for all torrents in the client.
+ * @type {number}
+ */
+Object.defineProperty(WebTorrent.prototype, 'ratio', {
+  get: function () {
+    var self = this
+    var uploaded = self.torrents.reduce(function (total, torrent) {
+      return total + torrent.uploaded
+    }, 0)
+    var downloaded = self.torrents.reduce(function (total, torrent) {
+      return total + torrent.downloaded
+    }, 0) || 1
+    return uploaded / downloaded
   }
+})
 
+/**
+ * Returns the torrent with the given `torrentId`. Convenience method. Easier than
+ * searching through the `client.torrents` array. Returns `null` if no matching torrent
+ * found.
+ *
+ * @param  {string|Buffer|Object|Torrent} torrentId
+ * @return {Torrent|null}
+ */
+WebTorrent.prototype.get = function (torrentId) {
+  var self = this
+  if (torrentId instanceof Torrent) return torrentId
+  var parsed
+  try {
+    parsed = parseTorrent(torrentId)
+  } catch (err) {
+    return null
+  }
+  if (!parsed.infoHash) throw new Error('Invalid torrent identifier')
+  for (var i = 0, len = self.torrents.length; i < len; i++) {
+    var torrent = self.torrents[i]
+    if (torrent.infoHash === parsed.infoHash) return torrent
+  }
+  return null
+}
+
+/**
+ * Start downloading a new torrent. Aliased as `client.download`.
+ * @param {string|Buffer|Object} torrentId
+ * @param {Object} opts torrent-specific options
+ * @param {function=} ontorrent called when the torrent is ready (has metadata)
+ */
+WebTorrent.prototype.add =
+WebTorrent.prototype.download = function (torrentId, opts, ontorrent) {
+  var self = this
+  if (self.destroyed) throw new Error('client is destroyed')
+  debug('add')
   if (typeof opts === 'function') {
-    cb = opts
+    ontorrent = opts
     opts = {}
   }
-  if (typeof cb !== 'function') {
-    cb = function () {}
-  }
-  cb = once(cb)
+  if (!opts) opts = {}
+  if (!opts.storage) opts.storage = self.storage
+  opts.client = self
 
-  opts = extend({
-    storage: FSStorage
-  }, opts)
+  var torrent = self.get(torrentId)
 
-  self.index = opts.index
-
-  // Called once we have a torrentId that bittorrent-client can handle
-  function onTorrentId (torrentId) {
-    Client.prototype.add.call(self, torrentId, opts, cb)
+  function _ontorrent () {
+    debug('on torrent')
+    if (typeof ontorrent === 'function') ontorrent(torrent)
   }
 
-  if (Client.toInfoHash(torrentId)) {
-    // magnet uri, info hash, or torrent file can be handled by bittorrent-client
-    process.nextTick(function () {
-      onTorrentId(torrentId)
-    })
-  } else if (/^https?:/.test(torrentId)) {
-    // http or https url to torrent file
-    http.get(torrentId, function (res) {
-      res.pipe(concat(function (torrent) {
-        onTorrentId(torrent)
-      }))
-    }).on('error', function (err) {
-      err = new Error('Error downloading torrent from ' + torrentId + '\n' + err.message)
-      cb(err)
-      self.emit('error', err)
-    })
+  if (torrent) {
+    if (torrent.ready) process.nextTick(_ontorrent)
+    else torrent.on('ready', _ontorrent)
+
   } else {
-    // assume it's a filesystem path
-    fs.readFile(torrentId, function (err, torrent) {
-      if (err) {
-        err = new Error('Cannot add torrent "' + torrentId + '". Torrent id must be one of: magnet uri, ' +
-          'info hash, torrent file, http url, or filesystem path.')
-        cb(err)
-        self.emit('error', err)
-      } else {
-        onTorrentId(torrent)
-      }
+    torrent = new Torrent(torrentId, opts)
+    self.torrents.push(torrent)
+
+    torrent.on('error', function (err) {
+      self.emit('error', err, torrent)
+      self.remove(torrent)
+    })
+
+    torrent.on('listening', function (port) {
+      self.emit('listening', port, torrent)
+    })
+
+    torrent.on('ready', function () {
+      _ontorrent()
+      self.emit('torrent', torrent)
     })
   }
 
-  return self
+  return torrent
 }
 
-WebTorrent.prototype._onTorrent = function (torrent) {
+/**
+ * Start seeding a new file/folder.
+ * @param  {string|File|FileList|Buffer|Array.<string|File|Buffer>} input
+ * @param  {Object} opts
+ * @param  {function} onseed
+ */
+WebTorrent.prototype.seed = function (input, opts, onseed) {
   var self = this
-
-  // if no index specified, use largest file
-  if (typeof torrent.index !== 'number') {
-    var largestFile = torrent.files.reduce(function (a, b) {
-      return a.length > b.length ? a : b
-    })
-    torrent.index = torrent.files.indexOf(largestFile)
+  if (self.destroyed) throw new Error('client is destroyed')
+  debug('seed')
+  if (typeof opts === 'function') {
+    onseed = opts
+    opts = {}
   }
+  if (!opts) opts = {}
+  opts.noVerify = true
+  opts.createdBy = 'WebTorrent/' + VERSION
 
-  torrent.files[torrent.index].select()
+  // When seeding from filesystem path, don't perform extra copy to /tmp
+  // Issue: https://github.com/feross/webtorrent/issues/357
+  if (typeof input === 'string' && !opts.path) opts.path = path.dirname(input)
 
-  // TODO: this won't work with multiple torrents
-  self.index = torrent.index
-  self.torrent = torrent
-}
-
-WebTorrent.prototype._startServer = function () {
-  var self = this
-  self.server = http.createServer()
-  self.server.on('request', self._onRequest.bind(self))
-}
-
-WebTorrent.prototype._onRequest = function (req, res) {
-  var self = this
-
-  if (!self.ready) {
-    return self.once('ready', self._onRequest.bind(self, req, res))
-  }
-
-  var u = url.parse(req.url)
-
-  if (u.pathname === '/favicon.ico') {
-    return res.end()
-  }
-  if (u.pathname === '/') {
-    u.pathname = '/' + self.index
-  }
-
-  var i = Number(u.pathname.slice(1))
-
-  if (isNaN(i) || i >= self.torrent.files.length) {
-    res.statusCode = 404
-    return res.end()
-  }
-
-  var file = self.torrent.files[i]
-  var range = req.headers.range
-
-  res.setHeader('Accept-Ranges', 'bytes')
-  res.setHeader('Content-Type', mime.lookup(file.name))
-
-  if (!range) {
-    res.statusCode = 206
-    res.setHeader('Content-Length', file.length)
-    if (req.method === 'HEAD') {
-      return res.end()
-    }
-    pump(file.createReadStream(), res)
-    return
-  }
-
-  range = rangeParser(file.length, range)[0] // don't support multi-range reqs
-  res.statusCode = 206
-
-  var rangeStr = 'bytes ' + range.start + '-' + range.end + '/' + file.length
-  res.setHeader('Content-Range', rangeStr)
-  res.setHeader('Content-Length', range.end - range.start + 1)
-
-  if (req.method === 'HEAD') {
-    return res.end()
-  }
-  pump(file.createReadStream(range), res)
-}
-
-//
-// HELPER METHODS
-//
-
-function parseBlocklist (filename) {
-  // TODO: support gzipped files
-  // TODO: convert to number once at load time, instead of each time in bittorrent-client
-  var blocklistData = fs.readFileSync(filename, { encoding: 'utf8' })
-  var blocklist = []
-  blocklistData.split('\n').forEach(function (line) {
-    var match = null
-    if ((match = /^\s*([^#].*)\s*:\s*([a-f0-9.:]+?)\s*-\s*([a-f0-9.:]+?)\s*$/.exec(line))) {
-      blocklist.push({
-        reason: match[1],
-        startAddress: match[2],
-        endAddress: match[3]
+  var streams
+  var torrent = self.add(undefined, opts, function (torrent) {
+    var tasks = [function (cb) {
+      torrent.storage.load(streams, cb)
+    }]
+    if (self.dht) {
+      tasks.push(function (cb) {
+        torrent.on('dhtAnnounce', cb)
       })
     }
+    parallel(tasks, function (err) {
+      if (err) return self.emit('error', err)
+      _onseed()
+      self.emit('seed', torrent)
+    })
   })
-  return blocklist
+
+  createTorrent.parseInput(input, opts, function (err, files) {
+    if (err) return self.emit('error', err)
+    streams = files.map(function (file) { return file.getStream })
+
+    createTorrent(input, opts, function (err, torrentBuf) {
+      if (err) return self.emit('error', err)
+      if (self.destroyed) return
+
+      var existingTorrent = self.get(torrentBuf)
+      if (existingTorrent) {
+        torrent.destroy()
+        _onseed()
+        return
+      } else {
+        torrent._onTorrentId(torrentBuf)
+      }
+    })
+  })
+
+  function _onseed () {
+    debug('on seed')
+    if (typeof onseed === 'function') onseed(torrent)
+  }
+
+  return torrent
+}
+
+/**
+ * Remove a torrent from the client.
+ * @param  {string|Buffer|Torrent}   torrentId
+ * @param  {function} cb
+ */
+WebTorrent.prototype.remove = function (torrentId, cb) {
+  var self = this
+  var torrent = self.get(torrentId)
+  if (!torrent) throw new Error('No torrent with id ' + torrentId)
+  debug('remove')
+  self.torrents.splice(self.torrents.indexOf(torrent), 1)
+  torrent.destroy(cb)
+}
+
+WebTorrent.prototype.address = function () {
+  var self = this
+  return { address: '0.0.0.0', family: 'IPv4', port: self.torrentPort }
+}
+
+/**
+ * Destroy the client, including all torrents and connections to peers.
+ * @param  {function} cb
+ */
+WebTorrent.prototype.destroy = function (cb) {
+  var self = this
+  self.destroyed = true
+  debug('destroy')
+
+  var tasks = self.torrents.map(function (torrent) {
+    return function (cb) {
+      self.remove(torrent, cb)
+    }
+  })
+
+  if (self.dht) {
+    tasks.push(function (cb) {
+      self.dht.destroy(cb)
+    })
+  }
+
+  parallel(tasks, cb)
 }
